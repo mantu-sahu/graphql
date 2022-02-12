@@ -1,106 +1,104 @@
 import 'package:flutter/material.dart';
+import 'package:graphql_flutter/graphql_flutter.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  final store = await initHiveForFlutter();
+  runApp(MaterialApp(title: "GQL App", home: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final HttpLink httpLink = HttpLink(
+    'https://countries.trevorblades.com/',
+  );
 
-  // This widget is the root of your application.
+  MyApp({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+    final ValueNotifier<GraphQLClient> client = ValueNotifier<GraphQLClient>(
+      GraphQLClient(
+        link: httpLink,
+        //we can pass store to hivestore. default is in memory
+        cache: GraphQLCache(),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+    );
+    return GraphQLProvider(
+      child: const HomePage(),
+      client: client,
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
+class HomePage extends StatelessWidget {
+  final String query = r"""
+                    query GetContinent($code : ID!){
+                      continent(code:$code){
+                        name
+                        countries{
+                          name
+                          emoji
+                          capital
+                        }
+                      }
+                    }
+                  """;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
+  const HomePage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('GraphlQL Client'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+
+      // To make a query using the graphql_flutter package, we’ll use the Query widget.
+      // Query widget has two properties passed to it: options and builder.
+      // The option property is where the configuration of the query is passed to the Query widget.
+      // The QueryOptions class exposes properties we use to set options for the Query widget.
+      // The document property is used to set the query string or to pass in the query we want the Query widget to perform.
+      // The builder property is a function. The function is called when the
+      // Query widget makes an HTTP request to the GraphQL server endpoint.
+      //The builder function is called by the Query widget with the data from
+      //the query, a function that is used to refetch the data, and a function
+      //that is used for pagination. This is used to fetch more data
+
+      // The builder function returns widgets below the Query widget.
+      // The result arg is an instance of the QueryResult.
+      // The QueryResult has properties that we can use to know the state of
+      // the query and the data returned by the Query widget.
+
+      body: Query(
+          options: QueryOptions(
+            document: gql(query),
+            variables: <String, dynamic>{"code": "AS"},
+            // pollInterval: const Duration(seconds: 10),
+          ),
+          builder: (QueryResult result,
+              {VoidCallback? refetch, FetchMore? fetchMore}) {
+            if (result.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (result.data == null) {
+              return const Text("No Data Found !");
+            }
+            return ListView.builder(
+              itemBuilder: (BuildContext context, int index) {
+                return ListTile(
+                  leading: Text(
+                    result.data!['continent']['countries'][index]['emoji'],
+                  ),
+                  title: Text(
+                    result.data!['continent']['countries'][index]['name'],
+                  ),
+                  subtitle: Text(
+                    result.data!['continent']['countries'][index]['capital'],
+                  ),
+                );
+              },
+              itemCount: result.data!['continent']['countries'].length,
+            );
+          }),
     );
   }
 }
